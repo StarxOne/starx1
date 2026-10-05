@@ -266,12 +266,14 @@ function notifyBot(text){if(!CFG.botToken||!CFG.adminChatId)return;
  fetch(`https://api.telegram.org/bot${CFG.botToken}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},
   body:JSON.stringify({chat_id:CFG.adminChatId,text,parse_mode:"HTML"})}).catch(()=>{})}
 // قیمت‌های پیش‌فرض (اگر config.json در دسترس نباشد از همین‌ها استفاده می‌شود)
-let PRICES={ton:100000,star:2500,gift:2600};
+let PRICES={ton:100000,star:2500,gift:2600,premium:450000};
 function buildCats(){return{
  ton:{n:"💎 تون (TON)",items:[1,5,10,25].map(v=>({id:"ton"+v,n:"TON "+v,e:"💎",p:v*PRICES.ton}))},
  star:{n:"⭐ استارز",items:[50,100,250,500,1000].map(v=>({id:"st"+v,n:v+" استارز",e:"⭐",p:v*PRICES.star}))},
  gift:{n:"🎁 گیفت استارزی",items:[["تدی","🧸",15],["قلب","💖",15],["رز","🌹",25],["گیفت","🎁",25],["کیک","🎂",50],["دسته گل","💐",50],["موشک","🚀",50],["بطری","🍾",50],["جام","🏆",100],["رینگ","💍",100],["الماس","💎",100]].map(x=>({id:"g"+x[0],n:x[0],e:x[1],p:x[2]*PRICES.gift,s:x[2]+" ⭐"}))},
- nft:{n:"🖼 NFT گیفت",nft:1}
+ premium:{n:"⚡ پرمیوم تلگرام",items:[1,3,6,12].map(v=>({id:"pr"+v,n:v+" ماهه",e:"⚡",p:v*PRICES.premium}))},
+ nft:{n:"🖼 NFT گیفت",linkForm:{icon:"🖼",title:"ثبت سفارش گیفت NFT",desc:"لینک گیفت NFT را وارد کنید. مبلغ و جزئیات بعد از بررسی در تلگرام اعلام می‌شود.",ph:"https://t.me/nft/..."}},
+ boost:{n:"🚀 بوست کانال",linkForm:{icon:"🚀",title:"ثبت سفارش بوست کانال/گروه",desc:"لینک یا آیدی کانال/گروهتان را وارد کنید تا برایش بوست فعال شود. مبلغ بعد از بررسی در تلگرام اعلام می‌شود.",ph:"https://t.me/yourchannel"}}
 }}
 let CATS=buildCats();
 function computeAll(){return Object.values(CATS).flatMap(c=>c.items||[])}
@@ -295,12 +297,14 @@ function esc(s){return String(s).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&
 function renderTabs(){
  $("tabs").innerHTML=Object.entries(CATS).map(([k,c])=>`<button class="tab ${k==cur?"on":""}" onclick="cur='${k}';renderTabs()">${c.n}</button>`).join("");
  const c=CATS[cur];
- $("list").innerHTML=c.nft?`<div class="card" style="text-align:right;max-width:520px;margin:auto"><div class="ic" style="text-align:center">🖼</div><b>ثبت سفارش گیفت NFT</b><p style="color:var(--mu);margin:4px 0 10px">لینک گیفت NFT را وارد کنید. مبلغ و جزئیات بعد از بررسی در تلگرام اعلام می‌شود.</p>
- <label>نام</label><input id="nn"><label>آیدی تلگرام</label><input id="nu" dir="ltr" placeholder="@name"><label>لینک گیفت NFT</label><input id="nl" dir="ltr" placeholder="https://t.me/nft/...">
- <button class="btn w" onclick="nftOrder()">ارسال لینک در تلگرام</button></div>`
+ $("list").innerHTML=c.linkForm?`<div class="card" style="text-align:right;max-width:520px;margin:auto"><div class="ic" style="text-align:center">${c.linkForm.icon}</div><b>${c.linkForm.title}</b><p style="color:var(--mu);margin:4px 0 10px">${c.linkForm.desc}</p>
+ <label>نام</label><input id="nn"><label>آیدی تلگرام</label><input id="nu" dir="ltr" placeholder="@name"><label>لینک</label><input id="nl" dir="ltr" placeholder="${c.linkForm.ph}">
+ <button class="btn w" onclick="linkOrder('${cur}')">ارسال لینک در تلگرام</button></div>`
  :`<div class="grid">`+c.items.map((i,idx)=>`<div class="card" style="animation-delay:${(idx*.04).toFixed(2)}s"><div class="ic">${i.e}</div><div class="nm">${i.n}</div>${i.s?`<span class="badge">${i.s}</span>`:""}<div class="pr">${f(i.p)} ${CFG.curr}</div><button class="btn" onclick="add('${i.id}',event)">افزودن</button></div>`).join("")+`</div>`;
- attachTilt();if(c.nft)prefillTG("nn","nu")}
-function attachTilt(){document.querySelectorAll("#list .card").forEach(card=>{
+ attachTilt();if(c.linkForm)prefillTG("nn","nu")}
+const CAN_HOVER=window.matchMedia&&window.matchMedia("(hover:hover) and (pointer:fine)").matches;
+function attachTilt(){if(!CAN_HOVER)return; // فقط دسکتاپ با موس؛ روی گوشی/لمسی این افکت اصلاً فعال نمی‌شود
+ document.querySelectorAll("#list .card").forEach(card=>{
  card.addEventListener("mousemove",e=>{const r=card.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
   const rx=((y/r.height)-.5)*-7,ry=((x/r.width)-.5)*7;
   card.style.transform=`perspective(650px) rotateX(${rx}deg) rotateY(${ry}deg) translateY(-4px)`});
@@ -347,11 +351,12 @@ function order(){
  cart={};save();cl("cartO");$("co").classList.add("hid");
  notifyBot(`🛒 <b>سفارش جدید</b>\nشناسه: ${o.id}\nنام: ${esc(n)}\nآیدی: ${esc(u)}\n${esc(items.join("، "))}\nجمع: ${f(o.total)} ${CFG.curr}`);
  tg(`سفارش ${o.id}\nنام: ${n}\nآیدی: ${u}\n${items.join("\n")}\nجمع: ${f(o.total)} ${CFG.curr}\n(رسید پرداخت را همینجا می‌فرستم)`);toast("سفارش ثبت شد؛ رسید را در تلگرام بفرستید");burstCoins()}
-function nftOrder(){
+function linkOrder(key){
  const n=$("nn").value.trim(),u=$("nu").value.trim(),l=$("nl").value.trim();if(!n||!u||!l)return toast("همه فیلدها را پر کنید");
- const o={id:"NF"+Date.now().toString(36).toUpperCase(),name:n,tg:u,items:["NFT گیفت"],link:l,total:0,status:"در انتظار بررسی"};put("orders",o);
- notifyBot(`🖼 <b>سفارش NFT جدید</b>\nشناسه: ${o.id}\nنام: ${esc(n)}\nآیدی: ${esc(u)}\nلینک: ${esc(l)}`);
- tg(`سفارش NFT ${o.id}\nنام: ${n}\nآیدی: ${u}\nلینک: ${l}`);toast("ثبت شد ✓");burstCoins()}
+ const label=CATS[key].linkForm.title,pre=key.slice(0,2).toUpperCase();
+ const o={id:pre+Date.now().toString(36).toUpperCase(),name:n,tg:u,items:[label],link:l,total:0,status:"در انتظار بررسی"};put("orders",o);
+ notifyBot(`🔗 <b>${esc(label)}</b>\nشناسه: ${o.id}\nنام: ${esc(n)}\nآیدی: ${esc(u)}\nلینک: ${esc(l)}`);
+ tg(`${label}\nشناسه: ${o.id}\nنام: ${n}\nآیدی: ${u}\nلینک: ${l}`);toast("ثبت شد ✓");burstCoins()}
 
 function openT(){
  $("tO").classList.add("on");const s=session();if(s)$("tn").value=s.name+" | "+s.phone;
